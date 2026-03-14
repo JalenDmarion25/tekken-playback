@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tekken Playback</title>
+  <script type="module" src="/main.js" defer></script>
+</head>
+
+<body>
+  <main class="container">
+    <h1>Tekken Playback</h1>
+
+    <div class="row slot-row">
+      <button class="slot-btn" data-slot="0">Slot 1</button>
+      <button class="slot-btn" data-slot="1">Slot 2</button>
+      <button class="slot-btn" data-slot="2">Slot 3</button>
+      <button class="slot-btn" data-slot="3">Slot 4</button>
+      <button class="slot-btn" data-slot="4">Slot 5</button>
+    </div>
+
+    <div class="row">
+      <button id="record-btn">Record (10s)</button>
+      <button id="play-btn" disabled>Playback</button>
+      <button id="stop-btn" disabled>Stop</button>
+    </div>
+
+    <label class="repeat-row">
+      <input type="checkbox" id="repeat-checkbox" />
+      Repeat
+    </label>
+
+    <p id="status">Idle</p>
+  </main>
+</body>
+
+</html>
