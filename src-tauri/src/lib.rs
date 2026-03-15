@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use rand::seq::SliceRandom;
 use std::sync::Mutex;
 
 use crate::engine::Engine;
@@ -137,6 +138,97 @@ fn stop_playback() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn random_playback() -> Result<(), String> {
+    {
+        let mut app = APP.lock().unwrap();
+        if app.is_playing {
+            return Ok(());
+        }
+        app.is_playing = true;
+        app.stop_playback = false;
+    }
+
+    std::thread::spawn(|| loop {
+        let (slot, rec, repeat) = {
+            let app = APP.lock().unwrap();
+            let slots = app.engine.filled_slots();
+
+            if slots.is_empty() {
+                drop(app);
+                let mut app = APP.lock().unwrap();
+                app.is_playing = false;
+                return;
+            }
+
+            let mut rng = rand::thread_rng();
+            let slot = *slots.choose(&mut rng).unwrap();
+            let rec = match app.engine.get_recording_for_slot(slot) {
+                Some(r) => r,
+                None => {
+                    drop(app);
+                    let mut app = APP.lock().unwrap();
+                    app.is_playing = false;
+                    return;
+                }
+            };
+
+            (slot, rec, app.repeat_playback)
+        };
+
+        {
+            let mut app = APP.lock().unwrap();
+            let _ = app.pad_p2.reset();
+        }
+
+        let fps = rec.fps.max(1);
+        let frame_time = std::time::Duration::from_secs_f64(1.0 / fps as f64);
+        let mut next_tick = std::time::Instant::now();
+
+        for frame in rec.frames {
+            {
+                let app = APP.lock().unwrap();
+                if app.stop_playback {
+                    drop(app);
+                    let mut app = APP.lock().unwrap();
+                    let _ = app.pad_p2.reset();
+                    app.is_playing = false;
+                    app.stop_playback = false;
+                    return;
+                }
+            }
+
+            next_tick += frame_time;
+
+            {
+                let mut app = APP.lock().unwrap();
+                let _ = app.pad_p2.set_frame(frame);
+            }
+
+            let now = std::time::Instant::now();
+            if next_tick > now {
+                std::thread::sleep(next_tick - now);
+            } else {
+                next_tick = now;
+            }
+        }
+
+        {
+            let mut app = APP.lock().unwrap();
+            let _ = app.pad_p2.reset();
+        }
+
+        if !repeat {
+            let mut app = APP.lock().unwrap();
+            app.is_playing = false;
+            app.stop_playback = false;
+            return;
+        }
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
 fn playback() -> Result<(), String> {
     {
         let mut app = APP.lock().unwrap();
@@ -264,7 +356,8 @@ pub fn run() {
             playback,
             stop_playback,
             set_repeat_playback,
-            set_selected_slot
+            set_selected_slot,
+            random_playback,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3742,6 +3742,7 @@ name = "tekken-playback"
 version = "0.1.0"
 dependencies = [
  "once_cell",
+ "rand 0.8.5",
  "serde",
  "serde_json",
  "tauri",

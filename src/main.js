@@ -6,6 +6,7 @@ const playBtn = () => document.querySelector("#play-btn");
 const stopBtn = () => document.querySelector("#stop-btn");
 const repeatCheckbox = () => document.querySelector("#repeat-checkbox");
 const slotButtons = () => Array.from(document.querySelectorAll(".slot-btn"));
+const randomPlayBtn = () => document.querySelector("#random-play-btn");
 
 let isRecording = false;
 let isPlaying = false;
@@ -28,6 +29,7 @@ async function refreshStatus() {
 
   playBtn().disabled = !st.has_recording || isRecording || isPlaying;
   stopBtn().disabled = !isPlaying;
+  randomPlayBtn().disabled = !st.slots.some(Boolean) || isRecording || isPlaying;
 
   repeatCheckbox().checked = st.repeat_playback;
   repeatCheckbox().disabled = isPlaying;
@@ -48,6 +50,14 @@ async function toggleRecord() {
   } else {
     await invoke("stop_recording");
   }
+  await refreshStatus();
+}
+
+async function randomPlayback() {
+  await invoke("set_repeat_playback", {
+    enabled: repeatCheckbox().checked,
+  });
+  await invoke("random_playback");
   await refreshStatus();
 }
 
@@ -76,7 +86,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   playBtn().addEventListener("click", playback);
   stopBtn().addEventListener("click", stopPlayback);
   repeatCheckbox().addEventListener("change", onRepeatChanged);
-
+  randomPlayBtn().addEventListener("click", randomPlayback);
   await refreshStatus();
 
   slotButtons().forEach((btn) => {

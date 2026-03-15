@@ -130,6 +130,20 @@ impl Engine {
         Ok(())
     }
 
+    pub fn get_recording_for_slot(&self, slot: usize) -> Option<Recording> {
+        let st = self.state.lock().unwrap();
+        st.recordings.get(slot).cloned().flatten()
+    }
+
+    pub fn filled_slots(&self) -> Vec<usize> {
+        let st = self.state.lock().unwrap();
+        st.recordings
+            .iter()
+            .enumerate()
+            .filter_map(|(i, rec)| rec.as_ref().filter(|r| !r.frames.is_empty()).map(|_| i))
+            .collect()
+    }
+
     /// Playback the current recording by iterating frames at the recorded fps.
     /// For now, this just calls `on_frame(frame)` each tick (we’ll later send to ViGEm).
     pub fn playback<F>(&self, mut on_frame: F) -> Result<(), String>
