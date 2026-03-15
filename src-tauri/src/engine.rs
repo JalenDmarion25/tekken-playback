@@ -4,8 +4,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-
-use crate::{Frame, Recording};
+use crate::{Frame, Recording, Side};
 
 #[derive(Default)]
 pub struct AppState {
@@ -66,11 +65,12 @@ impl Engine {
     }
 
     /// Start capturing frames from XInput controller `controller_index` at `fps`.
-    pub fn start_recording(&self, fps: u32) {
+    pub fn start_recording(&self, fps: u32, side: Side) {
         let mut st = self.state.lock().unwrap();
         let slot = st.selected_slot;
         st.recordings[slot] = Some(Recording {
             fps,
+            side,
             frames: Vec::new(),
         });
         st.is_recording = true;

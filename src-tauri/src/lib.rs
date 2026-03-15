@@ -9,7 +9,7 @@ pub mod input;
 pub mod recording;
 pub mod vigem;
 
-pub use recording::{Frame, Recording};
+pub use recording::{Frame, Recording, Side};
 
 #[derive(Clone, Copy)]
 enum RouteMode {
@@ -26,6 +26,7 @@ struct AppState {
     is_playing: bool,
     stop_playback: bool,
     repeat_playback: bool,
+    current_side: Side,
 }
 
 static APP: Lazy<Mutex<AppState>> = Lazy::new(|| {
@@ -43,6 +44,7 @@ static APP: Lazy<Mutex<AppState>> = Lazy::new(|| {
         is_playing: false,
         stop_playback: false,
         repeat_playback: false,
+        current_side: Side::Left,
     })
 });
 
@@ -55,6 +57,34 @@ struct Status {
     repeat_playback: bool,
     selected_slot: usize,
     slots: Vec<bool>,
+    current_side: String,
+}
+
+const DPAD_LEFT: u16 = 0x0004;
+const DPAD_RIGHT: u16 = 0x0008;
+
+fn invert_horizontal_buttons(buttons: u16) -> u16 {
+    let left = buttons & DPAD_LEFT != 0;
+    let right = buttons & DPAD_RIGHT != 0;
+
+    let mut out = buttons & !(DPAD_LEFT | DPAD_RIGHT);
+
+    if left {
+        out |= DPAD_RIGHT;
+    }
+    if right {
+        out |= DPAD_LEFT;
+    }
+
+    out
+}
+
+fn invert_frame_horizontal(frame: Frame) -> Frame {
+    Frame {
+        buttons: invert_horizontal_buttons(frame.buttons),
+        lx: -frame.lx,
+        ..frame
+    }
 }
 
 #[tauri::command]
@@ -80,6 +110,10 @@ fn get_status() -> Status {
         repeat_playback: app.repeat_playback,
         selected_slot,
         slots,
+        current_side: match app.current_side {
+            Side::Left => "left".into(),
+            Side::Right => "right".into(),
+        },
     }
 }
 
@@ -95,12 +129,12 @@ fn start_recording(_controller_index: u32, fps: u32, max_seconds: u32) -> Result
     }
 
     {
-        let engine = {
+        let (engine, side) = {
             let app = APP.lock().unwrap();
-            app.engine.clone()
+            (app.engine.clone(), app.current_side)
         };
 
-        engine.start_recording(fps);
+        engine.start_recording(fps, side);
     }
 
     std::thread::spawn(move || {
@@ -242,18 +276,21 @@ fn playback() -> Result<(), String> {
     }
 
     std::thread::spawn(|| {
-        let rec = {
+        let (rec, current_side) = {
             let app = APP.lock().unwrap();
-            match app.engine.get_selected_recording() {
+            let rec = match app.engine.get_selected_recording() {
                 Some(r) => r,
                 None => {
+                    drop(app);
                     let mut app = APP.lock().unwrap();
                     app.is_playing = false;
                     return;
                 }
-            }
+            };
+            (rec, app.current_side)
         };
 
+        let should_invert = rec.side != current_side;
         let fps = rec.fps.max(1);
         let frame_time = std::time::Duration::from_secs_f64(1.0 / fps as f64);
 
@@ -282,7 +319,13 @@ fn playback() -> Result<(), String> {
 
                 {
                     let mut app = APP.lock().unwrap();
-                    let _ = app.pad_p2.set_frame(*frame);
+                    let frame_to_send = if should_invert {
+                        invert_frame_horizontal(*frame)
+                    } else {
+                        *frame
+                    };
+
+                    let _ = app.pad_p2.set_frame(frame_to_send);
                 }
 
                 let now = std::time::Instant::now();
@@ -315,6 +358,17 @@ fn playback() -> Result<(), String> {
 fn set_selected_slot(slot: usize) -> Result<(), String> {
     let app = APP.lock().unwrap();
     app.engine.set_selected_slot(slot)
+}
+
+#[tauri::command]
+fn set_current_side(side: String) -> Result<(), String> {
+    let mut app = APP.lock().unwrap();
+    app.current_side = match side.as_str() {
+        "left" => Side::Left,
+        "right" => Side::Right,
+        _ => return Err("Invalid side".into()),
+    };
+    Ok(())
 }
 
 #[tauri::command]
@@ -358,6 +412,7 @@ pub fn run() {
             set_repeat_playback,
             set_selected_slot,
             random_playback,
+            set_current_side,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

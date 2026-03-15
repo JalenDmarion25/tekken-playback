@@ -7,6 +7,7 @@ const stopBtn = () => document.querySelector("#stop-btn");
 const repeatCheckbox = () => document.querySelector("#repeat-checkbox");
 const slotButtons = () => Array.from(document.querySelectorAll(".slot-btn"));
 const randomPlayBtn = () => document.querySelector("#random-play-btn");
+const sideSelect = () => document.querySelector("#side-select");
 
 let isRecording = false;
 let isPlaying = false;
@@ -26,6 +27,7 @@ async function refreshStatus() {
 
   recordBtn().textContent = isRecording ? "Stop Recording" : "Record (10s)";
   recordBtn().disabled = isPlaying;
+  sideSelect().value = st.current_side;
 
   playBtn().disabled = !st.has_recording || isRecording || isPlaying;
   stopBtn().disabled = !isPlaying;
@@ -81,12 +83,22 @@ async function onRepeatChanged() {
   await refreshStatus();
 }
 
+
+async function updateSide() {
+  await invoke("set_current_side", {
+    side: sideSelect().value,
+  });
+  await refreshStatus();
+}
+
+
 window.addEventListener("DOMContentLoaded", async () => {
   recordBtn().addEventListener("click", toggleRecord);
   playBtn().addEventListener("click", playback);
   stopBtn().addEventListener("click", stopPlayback);
   repeatCheckbox().addEventListener("change", onRepeatChanged);
   randomPlayBtn().addEventListener("click", randomPlayback);
+  sideSelect().addEventListener("change", updateSide);
   await refreshStatus();
 
   slotButtons().forEach((btn) => {
