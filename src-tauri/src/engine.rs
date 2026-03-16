@@ -1,10 +1,10 @@
+use crate::{Frame, Recording, Side};
 use std::{
     fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
 };
-use crate::{Frame, Recording, Side};
 
 #[derive(Default)]
 pub struct AppState {

@@ -7,6 +7,7 @@ use crate::vigem::X360Pad;
 pub mod engine;
 pub mod input;
 pub mod recording;
+pub mod side_detection;
 pub mod vigem;
 
 pub use recording::{Frame, Recording, Side};
@@ -26,7 +27,7 @@ struct AppState {
     is_playing: bool,
     stop_playback: bool,
     repeat_playback: bool,
-    current_side: Side,
+    detected_side: Side,
 }
 
 static APP: Lazy<Mutex<AppState>> = Lazy::new(|| {
@@ -44,7 +45,7 @@ static APP: Lazy<Mutex<AppState>> = Lazy::new(|| {
         is_playing: false,
         stop_playback: false,
         repeat_playback: false,
-        current_side: Side::Left,
+        detected_side: Side::Unknown,
     })
 });
 
@@ -82,7 +83,7 @@ fn invert_horizontal_buttons(buttons: u16) -> u16 {
 fn invert_frame_horizontal(frame: Frame) -> Frame {
     Frame {
         buttons: invert_horizontal_buttons(frame.buttons),
-        lx: -frame.lx,
+        lx: frame.lx.saturating_neg(),
         ..frame
     }
 }
@@ -110,15 +111,25 @@ fn get_status() -> Status {
         repeat_playback: app.repeat_playback,
         selected_slot,
         slots,
-        current_side: match app.current_side {
+        current_side: match app.detected_side {
             Side::Left => "left".into(),
             Side::Right => "right".into(),
+            Side::Unknown => "unknown".into(),
         },
     }
 }
 
 #[tauri::command]
 fn start_recording(_controller_index: u32, fps: u32, max_seconds: u32) -> Result<(), String> {
+    let (engine, side) = {
+        let app = APP.lock().unwrap();
+        (app.engine.clone(), app.detected_side)
+    };
+
+    if side == Side::Unknown {
+        return Err("Side detection is not ready yet.".into());
+    }
+
     {
         let mut app = APP.lock().unwrap();
         app.route = RouteMode::SwapWhileRecord;
@@ -128,14 +139,7 @@ fn start_recording(_controller_index: u32, fps: u32, max_seconds: u32) -> Result
         let _ = app.pad_p1.reset();
     }
 
-    {
-        let (engine, side) = {
-            let app = APP.lock().unwrap();
-            (app.engine.clone(), app.current_side)
-        };
-
-        engine.start_recording(fps, side);
-    }
+    engine.start_recording(fps, side);
 
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_secs(max_seconds as u64));
@@ -183,7 +187,7 @@ fn random_playback() -> Result<(), String> {
     }
 
     std::thread::spawn(|| loop {
-        let (slot, rec, repeat) = {
+        let (_slot, rec, repeat) = {
             let app = APP.lock().unwrap();
             let slots = app.engine.filled_slots();
 
@@ -235,7 +239,16 @@ fn random_playback() -> Result<(), String> {
 
             {
                 let mut app = APP.lock().unwrap();
-                let _ = app.pad_p2.set_frame(frame);
+                let frame_to_send = if rec.side != Side::Unknown
+                    && app.detected_side != Side::Unknown
+                    && rec.side != app.detected_side
+                {
+                    invert_frame_horizontal(frame)
+                } else {
+                    frame
+                };
+
+                let _ = app.pad_p2.set_frame(frame_to_send);
             }
 
             let now = std::time::Instant::now();
@@ -276,9 +289,9 @@ fn playback() -> Result<(), String> {
     }
 
     std::thread::spawn(|| {
-        let (rec, current_side) = {
+        let rec = {
             let app = APP.lock().unwrap();
-            let rec = match app.engine.get_selected_recording() {
+            match app.engine.get_selected_recording() {
                 Some(r) => r,
                 None => {
                     drop(app);
@@ -286,11 +299,9 @@ fn playback() -> Result<(), String> {
                     app.is_playing = false;
                     return;
                 }
-            };
-            (rec, app.current_side)
+            }
         };
 
-        let should_invert = rec.side != current_side;
         let fps = rec.fps.max(1);
         let frame_time = std::time::Duration::from_secs_f64(1.0 / fps as f64);
 
@@ -319,7 +330,11 @@ fn playback() -> Result<(), String> {
 
                 {
                     let mut app = APP.lock().unwrap();
-                    let frame_to_send = if should_invert {
+
+                    let frame_to_send = if rec.side != Side::Unknown
+                        && app.detected_side != Side::Unknown
+                        && rec.side != app.detected_side
+                    {
                         invert_frame_horizontal(*frame)
                     } else {
                         *frame
@@ -361,17 +376,6 @@ fn set_selected_slot(slot: usize) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_current_side(side: String) -> Result<(), String> {
-    let mut app = APP.lock().unwrap();
-    app.current_side = match side.as_str() {
-        "left" => Side::Left,
-        "right" => Side::Right,
-        _ => return Err("Invalid side".into()),
-    };
-    Ok(())
-}
-
-#[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
@@ -400,6 +404,19 @@ pub fn run() {
         });
     });
 
+    std::thread::spawn(|| loop {
+        let side = crate::side_detection::detect_side_once();
+
+        {
+            let mut app = APP.lock().unwrap();
+            app.detected_side = side;
+        }
+
+        println!("detected side: {:?}", side);
+
+        std::thread::sleep(std::time::Duration::from_millis(33));
+    });
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -412,7 +429,6 @@ pub fn run() {
             set_repeat_playback,
             set_selected_slot,
             random_playback,
-            set_current_side,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

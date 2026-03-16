@@ -15,6 +15,7 @@ pub struct Frame {
 pub enum Side {
     Left,
     Right,
+    Unknown,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
