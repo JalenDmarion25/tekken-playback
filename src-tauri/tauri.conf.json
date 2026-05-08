@@ -10,7 +10,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "tekken-playback",
+        "title": "Tekken Playback",
         "width": 800,
         "height": 600
       }
