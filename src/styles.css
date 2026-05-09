@@ -40,6 +40,7 @@
 .row {
   display: flex;
   justify-content: center;
+  padding: 10px
 }
 
 a {
@@ -87,6 +88,14 @@ button {
   outline: none;
 }
 
+.slot-btn{
+  margin: 5px;
+}
+
+.playback-btn{
+  margin: 5px;
+}
+
 #greet-input {
   margin-right: 5px;
 }
@@ -103,6 +112,11 @@ button {
   gap: 8px;
   margin-top: 8px;
   margin-bottom: 12px;
+}
+
+p{
+  font-size: 20px;
+  font-weight: 600;
 }
 
 @media (prefers-color-scheme: dark) {

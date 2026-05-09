@@ -183,7 +183,7 @@ fn random_playback() -> Result<(), String> {
     }
 
     std::thread::spawn(|| loop {
-        let (slot, rec, repeat) = {
+        let (_slot, rec, repeat) = {
             let app = APP.lock().unwrap();
             let slots = app.engine.filled_slots();
 
